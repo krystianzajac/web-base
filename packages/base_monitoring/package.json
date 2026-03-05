@@ -9,16 +9,20 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --reporter=verbose",
     "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "react": "^18.0.0"
+    "react": "^18.0.0",
+    "@sentry/nextjs": "^8.0.0"
   },
   "devDependencies": {
+    "@sentry/nextjs": "^8.0.0",
     "@types/react": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
     "typescript": "^5.7.0",
-    "vitest": "^1.6.0"
+    "vitest": "^1.6.0",
+    "jsdom": "^24.1.0"
   }
 }

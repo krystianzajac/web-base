@@ -1,4 +1,19 @@
-// base_monitoring — Sentry, analytics, structured logging
-// Full implementation in a future phase
+// Types
+export type { MonitoringConfig, AnalyticsConfig, AnalyticsApiClient } from './types/monitoring-config'
 
-export {}
+// Init
+export { initMonitoring } from './monitoring/init-monitoring'
+
+// Logging
+export { Logger } from './logging/logger'
+export { setUserContext, clearUserContext } from './logging/user-context'
+
+// Tracing
+export { PerformanceTracer } from './tracing/performance-tracer'
+export type { Trace } from './tracing/performance-tracer'
+
+// Components
+export { ErrorBoundaryWithMonitoring } from './components/ErrorBoundaryWithMonitoring'
+
+// Analytics
+export { Analytics, initAnalytics } from './analytics/analytics'
