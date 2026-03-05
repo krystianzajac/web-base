@@ -185,86 +185,100 @@ Commit: "feat: base_auth with Supabase SSR, hooks, server helpers"
 ```
 Read CLAUDE.md. Phase 3: implement base_api — the data fetching layer.
 
-Implement packages/base_api. All Supabase access goes through this package. Apps never call fetch() or Supabase directly.
+Implement packages/base_api. All Supabase access goes through clients created by this package.
+Apps never call fetch() directly or instantiate Supabase clients themselves.
+
+IMPORTANT DESIGN DECISION: base_api exposes the full Supabase typed query builder
+rather than hiding it behind a generic query(table, filters) method. This preserves
+Supabase's TypeScript type generation (supabase gen types typescript), which gives
+column-level type safety, autocomplete, and join types. base_api wraps the client
+with retry logic, error normalisation, and auth attachment — but does not restrict
+what queries can be expressed.
 
 Dependencies:
-- @supabase/ssr, @supabase/supabase-js (peer)
+- @supabase/ssr, @supabase/supabase-js
 - @tanstack/react-query
 
 ApiConfig type:
 - supabaseUrl: string
 - supabaseAnonKey: string
 - retryAttempts: number (default 3)
-- retryDelay: number (default 1000ms, doubles each retry)
+- retryDelay: number (default 1000ms, doubles each retry — exponential backoff)
 - timeout: number (default 10000ms)
 
-createApiClient(config: ApiConfig):
-- Returns an ApiClient instance
-- Internally creates typed Supabase client with auth token auto-attachment
-- All methods typed — no Supabase types in return values
+Database type parameter:
+- All client factories accept an optional generic: createBrowserApiClient<Database>(config)
+- Database comes from running `supabase gen types typescript` in the consuming app
+- When provided, all .from('table') calls are fully typed (columns, inserts, updates, relations)
+- When not provided (no generated types yet), falls back to any — still works
 
-ApiClient methods:
-- query<T>(table: string, filters?: QueryFilters): Promise<T[]>
-- queryOne<T>(table: string, filters: QueryFilters): Promise<T | null>
-- insert<T>(table: string, data: Partial<T>): Promise<T>
-- update<T>(table: string, id: string, data: Partial<T>): Promise<T>
-- delete(table: string, id: string): Promise<void>
-- rpc<T>(functionName: string, params?: Record<string, unknown>): Promise<T>
+createBrowserApiClient<TDatabase = any>(config: ApiConfig):
+- For use in Client Components and browser contexts
+- Returns a wrapped Supabase client with:
+  - Auth token auto-attached on every request
+  - All Supabase errors normalised to typed ApiError hierarchy (see below)
+  - Retry with exponential backoff on NetworkError and ServerError only
+  - Full Supabase query builder interface preserved (.from(), .rpc(), .storage, etc.)
+- Usage: const client = createBrowserApiClient<Database>(config)
+         const { data, error } = await client.from('profiles').select('*').eq('id', userId).single()
+         // error is ApiError | null — normalised, not raw Supabase error
 
-QueryFilters type:
-- eq?: Record<string, unknown>
-- neq?: Record<string, unknown>
-- gt?: Record<string, number | string>
-- lt?: Record<string, number | string>
-- in?: Record<string, unknown[]>
-- order?: { column: string, ascending: boolean }
-- limit?: number
-- offset?: number
+createServerApiClient<TDatabase = any>(cookieStore, config: ApiConfig):
+- For use in Server Components, Server Actions, and Route Handlers
+- Same interface as browser client but uses @supabase/ssr createServerClient internally
+- Reads/writes session from Next.js cookie store
+- Usage: const client = createServerApiClient<Database>(cookieStore, config)
+         const { data } = await client.from('profiles').select('*').eq('id', userId).single()
+
+createMiddlewareApiClient<TDatabase = any>(request, response, config: ApiConfig):
+- For use in Next.js middleware only
+- Handles session refresh in middleware context
 
 Typed error hierarchy (all extend ApiError):
 - ApiError: base class. Props: message, code, statusCode, originalError?
 - NetworkError: no connectivity or timeout
-- AuthError: 401/403 from Supabase
+- AuthError: 401/403
 - NotFoundError: 404 / PGRST116
 - ConflictError: 409 / unique constraint violation
-- ServerError: 500+ from Supabase
+- ServerError: 500+
 - RateLimitError: 429
 - UnknownError: catch-all
 
-ErrorMessageMapper:
-- mapError(error: ApiError): string — maps to human-readable message
-- mapErrorToKey(error: ApiError): string — maps to i18n key string
+Error normalisation:
+- Wrap all Supabase query results: if (error) throw normaliseError(error)
+- normaliseError(error): maps PostgrestError, AuthError, and fetch errors → typed ApiError subclass
+- This happens transparently — callers use .data and .error as normal but .error is always ApiError | null
 
-Retry logic:
-- Exponential backoff: 1s → 2s → 4s
-- Only retry NetworkError and ServerError (not AuthError, NotFoundError, ConflictError)
-- Max attempts from config
+ErrorMessageMapper:
+- mapError(error: ApiError): string — human-readable message
+- mapErrorToKey(error: ApiError): string — i18n key
 
 ApiQueryProvider component:
-- Wraps children in TanStack QueryClientProvider with sensible defaults
-- staleTime: 60s, retry: false (base_api handles retries itself), gcTime: 5min
+- Wraps children in TanStack QueryClientProvider
+- staleTime: 60s, retry: false (base_api handles retries), gcTime: 5min
 
-useApiQuery<T>(key, fetcher, options?) hook:
+useApiQuery<T>(key: QueryKey, fetcher: () => Promise<T>, options?) hook:
 - Thin wrapper around TanStack useQuery
-- Accepts an ApiClient method call as fetcher
 - Returns { data, loading, error: ApiError | null, refetch }
 
-useApiMutation<T, V>(mutator, options?) hook:
+useApiMutation<T, V>(mutator: (vars: V) => Promise<T>, options?) hook:
 - Thin wrapper around TanStack useMutation
 - Returns { mutate, loading, error: ApiError | null, data }
 
-Write unit tests (mock Supabase client and fetch):
-- query: successful fetch, empty result, maps to correct type
-- insert: success, conflict error mapped to ConflictError
-- update: success, not found mapped to NotFoundError
-- delete: success, auth error mapped to AuthError
-- Retry: retries NetworkError 3 times with backoff, does not retry AuthError
-- ErrorMessageMapper: maps each error type to a non-empty string
-- useApiQuery: loading → data transition, error state
-- useApiMutation: triggers mutation, returns data on success, ApiError on failure
+Write unit tests (use MSW to intercept Supabase HTTP calls — do not mock the Supabase client directly):
+- Successful query: MSW returns rows → data typed correctly
+- NotFoundError: MSW returns PGRST116 → normalised to NotFoundError
+- AuthError: MSW returns 401 → normalised to AuthError
+- ConflictError: MSW returns 409 → normalised to ConflictError
+- NetworkError: MSW network failure → retried 3 times with backoff → throws NetworkError
+- ServerError: MSW returns 500 → retried → throws ServerError
+- AuthError: NOT retried
+- ErrorMessageMapper: each error type maps to non-empty string
+- useApiQuery: loading → data, error state
+- useApiMutation: fires mutation, returns data, returns ApiError on failure
 
 Run `pnpm turbo test lint typecheck` — all must pass.
-Commit: "feat: base_api with typed errors, retry, TanStack Query wrappers"
+Commit: "feat: base_api with typed query builder wrapper, error normalisation, retry"
 ```
 
 ---
@@ -274,7 +288,7 @@ Commit: "feat: base_api with typed errors, retry, TanStack Query wrappers"
 ```
 Read CLAUDE.md. Phase 4: implement base_monitoring — Sentry, structured logging, analytics.
 
-Implement packages/base_monitoring. This should be initialised at app startup and used everywhere instead of console.log.
+Implement packages/base_monitoring. Initialise at app startup. Use instead of console.log everywhere.
 
 Dependencies:
 - @sentry/nextjs
@@ -288,7 +302,6 @@ MonitoringConfig type:
 
 initMonitoring(config: MonitoringConfig): void
 - Calls Sentry.init with config
-- Sets environment and release
 - Must be called in instrumentation.ts (Next.js) at app startup
 
 Logger (static class):
@@ -296,21 +309,20 @@ Logger (static class):
 - Logger.warn(message: string, data?: Record<string, unknown>): void
 - Logger.error(message: string, error?: Error, data?: Record<string, unknown>): void
 - Logger.debug(message: string, data?: Record<string, unknown>): void
-- In dev: logs to console with structured format
-- In prod: sends to Sentry as breadcrumbs (info/warn/debug) or captureException (error)
-- Never exposes console.log directly — Logger is the only allowed logging mechanism
+- In dev: structured console output
+- In prod: Sentry breadcrumbs for info/warn/debug, Sentry.captureException for error
+- No console.log anywhere in production code — Logger is the only logging mechanism
 
 setUserContext(userId: string, properties?: Record<string, unknown>): void
-- Attaches user context to all future Sentry events
-- Uses anonymous ID (not email)
+- Attaches anonymous user context to Sentry events (never email)
 
 clearUserContext(): void
-- Clears Sentry user context on sign out
+- Clears on sign out
 
 PerformanceTracer:
-- startTrace(name: string): Trace — returns handle
+- startTrace(name: string): Trace
 - endTrace(trace: Trace): void
-- withTrace<T>(name: string, fn: () => Promise<T>): Promise<T> — wraps async function in trace
+- withTrace<T>(name: string, fn: () => Promise<T>): Promise<T>
 
 ErrorBoundaryWithMonitoring component:
 - React error boundary that also calls Sentry.captureException
@@ -318,23 +330,25 @@ ErrorBoundaryWithMonitoring component:
 
 AnalyticsConfig type:
 - enabled: boolean
-- supabaseClient?: SupabaseClient (for writing to analytics_events table)
+- apiClient?: ReturnType<typeof createBrowserApiClient> (from base_api — use the shared client, do not create a new Supabase connection)
 
 Analytics (static class, requires initAnalytics(config) called first):
 - Analytics.screen(name: string, properties?: Record<string, unknown>): void
 - Analytics.event(name: string, properties?: Record<string, unknown>): void
 - Analytics.funnel(step: string, funnelName: string): void
-- All methods no-op if config.enabled is false (consent not given)
-- Writes to Supabase analytics_events table when supabaseClient provided
+- All methods no-op if config.enabled is false
+- Writes to analytics_events table via config.apiClient when provided
+- IMPORTANT: accepts the existing apiClient from base_api rather than creating its own Supabase client
 
 Write unit tests:
-- Logger: info/warn/error/debug call correct Sentry methods in prod mode
-- Logger: console.log called in dev mode, not in prod mode
-- Logger.error: calls Sentry.captureException with error
+- Logger.info/warn/debug: Sentry.addBreadcrumb called in prod, console in dev
+- Logger.error: Sentry.captureException called with error object
+- Logger: no console output in prod mode
 - setUserContext: Sentry.setUser called with correct anonymised ID
-- PerformanceTracer: start/end trace calls Sentry span methods
-- Analytics: events not fired when enabled=false
-- Analytics: events fired when enabled=true
+- PerformanceTracer: withTrace resolves value, calls span start/end
+- Analytics: no events when enabled=false
+- Analytics: events recorded when enabled=true
+- Analytics: uses provided apiClient, does not create new Supabase instance
 
 Run `pnpm turbo test lint typecheck` — all must pass.
 Commit: "feat: base_monitoring with Sentry, Logger, Analytics"
@@ -347,10 +361,12 @@ Commit: "feat: base_monitoring with Sentry, Logger, Analytics"
 ```
 Read CLAUDE.md. Phase 5: implement base_cms — CMS content service.
 
-Implement packages/base_cms. Reads from the cms_content Supabase table (same table used by app-base Flutter apps). Cache in localStorage with TTL.
+Implement packages/base_cms. Reads from the cms_content Supabase table (same table used by
+app-base Flutter apps). Supports both Client Components (browser) and Server Components (SSR).
 
 The cms_content table schema (already exists in Supabase):
-  id uuid, app_id text, key text, locale text, content_json jsonb, version int, created_at timestamptz, updated_at timestamptz
+  id uuid, app_id text, key text, locale text, content_json jsonb, version int,
+  created_at timestamptz, updated_at timestamptz
   Unique on (app_id, key, locale)
 
 CmsConfig type:
@@ -361,17 +377,20 @@ CmsConfig type:
 - cacheTtlMs: number (default 300000 = 5 min)
 - fallbackToDefaultLocale: boolean (default true)
 
+CLIENT-SIDE (Browser / Client Components):
+
 CmsProvider component:
 - Wraps children, provides CMS context
+- Accepts config and an apiClient (ReturnType<typeof createBrowserApiClient> from base_api)
+- Uses the passed-in client — does not create its own Supabase connection
 - Required at app root
 
 useCms(key: string, locale?: string) hook:
 - Returns { content: string | null, loading: boolean, error: string | null }
-- Fetches from Supabase on first call, caches in localStorage
-- Cache key: cms_{appId}_{key}_{locale}
-- On cache hit within TTL: returns cached value immediately, no network call
-- On cache miss or expired: fetches from Supabase, updates cache
-- If locale not found and fallbackToDefaultLocale=true: retries with defaultLocale
+- Cache in localStorage. Key: cms_{appId}_{key}_{locale}
+- Cache hit within TTL: return immediately, no network call
+- Cache miss or expired: fetch via apiClient, update cache
+- If locale not found and fallbackToDefaultLocale=true: retry with defaultLocale
 - If not found at all: content is null
 
 useCmsJson<T>(key: string, locale?: string) hook:
@@ -379,30 +398,40 @@ useCmsJson<T>(key: string, locale?: string) hook:
 - Returns { data: T | null, loading: boolean, error: string | null }
 
 CmsText component:
-- Props: cmsKey: string, locale?: string, fallback?: string, className?: string
-- Renders text from CMS. Shows fallback (or nothing) while loading or on error.
-- Renders a BaseSkeleton while loading if no fallback provided
+- Props: cmsKey, locale?, fallback?, className?
+- Shows BaseSkeleton (from base_ui) while loading if no fallback provided
 
 CmsImage component:
-- Props: cmsKey: string, locale?: string, alt: string, fallback?: string, className?: string, width?, height?
-- Renders Next.js Image from CMS URL. Shows fallback src on error.
+- Props: cmsKey, locale?, alt, fallback?, className?, width?, height?
+- Renders Next.js Image from CMS URL, shows fallback on error
 
-preloadCms(keys: string[], locale: string, config: CmsConfig): Promise<void>
-- Server-side helper: fetch multiple CMS keys at once, returns them for RSC data passing
-- Used in Next.js layout.tsx to preload content before page render
+SERVER-SIDE (Server Components / RSC):
 
-Write unit tests (mock Supabase client, mock localStorage):
-- useCms: cache miss → fetches from Supabase → caches result
-- useCms: cache hit within TTL → returns cached, no network call
-- useCms: cache expired → re-fetches
+createServerCmsClient(cookieStore, config: CmsConfig):
+- Uses createServerApiClient from base_api internally
+- Returns server-side CMS methods (not hooks — plain async functions)
+
+Server CMS methods:
+- getCmsContent(key: string, locale: string): Promise<string | null>
+- getCmsJson<T>(key: string, locale: string): Promise<T | null>
+- preloadCms(keys: string[], locale: string): Promise<Record<string, string>>
+  - Fetches all keys in a SINGLE Supabase query (not N queries — use .in() filter)
+  - Used in layout.tsx to preload content before page render
+  - Returns map of key → content string
+
+Write unit tests (MSW for Supabase HTTP calls, mock localStorage):
+- useCms: cache miss → fetches → caches result
+- useCms: cache hit within TTL → no network call
+- useCms: expired cache → re-fetches
 - useCms: locale not found → falls back to defaultLocale
 - useCms: key not found → content is null
-- useCmsJson: parses JSON correctly, handles malformed JSON gracefully
-- CmsText: shows skeleton while loading, shows content when loaded, shows fallback on error
-- preloadCms: fetches all keys in a single Supabase query (not N queries)
+- useCmsJson: parses JSON, handles malformed JSON gracefully (returns null, not throw)
+- CmsText: skeleton while loading, content when loaded, fallback on error
+- preloadCms: issues a single Supabase query for all keys (assert MSW received one request, not many)
+- getCmsContent: returns content from server client
 
 Run `pnpm turbo test lint typecheck` — all must pass.
-Commit: "feat: base_cms with locale-aware content, localStorage cache"
+Commit: "feat: base_cms with client hooks, server helpers, localStorage cache"
 ```
 
 ---
@@ -412,72 +441,75 @@ Commit: "feat: base_cms with locale-aware content, localStorage cache"
 ```
 Read CLAUDE.md. Phase 6: implement base_test_utils — shared test infrastructure.
 
-Implement packages/base_test_utils. This is a devDependency only — never imported in production code.
+Implement packages/base_test_utils. devDependency only — never imported in production code.
 
 Dependencies (all devDependencies):
 - vitest
 - @testing-library/react
 - @testing-library/user-event
 - @testing-library/jest-dom
-- msw (Mock Service Worker — for mocking fetch/Supabase HTTP calls)
+- msw (Mock Service Worker)
 
 renderWithBrand(ui: ReactElement, options?: { brand?: AppBrand, locale?: string, queryClient?: QueryClient }): RenderResult
-- Wraps component in: BrandProvider, AuthProvider (with MockAuthService), ApiQueryProvider, CmsProvider
+- Wraps component in: BrandProvider, AuthProvider (with mock auth), ApiQueryProvider, CmsProvider
 - One function replaces all provider boilerplate in every test
 - Returns everything from @testing-library/react render
 
 MockAuthService:
 - createMockAuthService(overrides?: Partial<MockAuthState>): MockAuthState
-- Default state: user = null, loading = false, error = null
-- Configurable: initialUser (pre-authenticated), signIn result (success or throw AuthError), signUp result, signOut behaviour
-- All mock methods are vi.fn() — can assert they were called
+- Default: user = null, loading = false, error = null
+- Configurable: initialUser (pre-authenticated), signIn result (success or throw AuthError), signUp result
+- All mock methods are vi.fn()
 
 MockApiClient:
-- createMockApiClient(responses?: MockResponses): MockApiClient
-- MockResponses: map of table name → { query: T[], queryOne: T | null, insert: T, update: T }
-- Default: returns empty arrays / null
-- Can inject errors: createMockApiClient({ errorOn: { query: new NetworkError('offline') } })
-- All methods are vi.fn() — can assert calls and arguments
+- Do NOT mock a query(table, filters) method — that design was rejected.
+- Instead, provide MSW request handlers that intercept Supabase HTTP calls.
+- createSupabaseMockHandlers(tableName: string, options: MockTableOptions): RequestHandler[]
+  - MockTableOptions: { rows?: unknown[], insertResponse?: unknown, error?: { code: string, message: string } }
+  - Intercepts GET /rest/v1/{tableName} → returns rows
+  - Intercepts POST /rest/v1/{tableName} → returns insertResponse
+  - Intercepts PATCH /rest/v1/{tableName} → returns updated row
+  - Intercepts DELETE /rest/v1/{tableName} → returns 204
+  - If error set: returns the Supabase error shape ({ code, message, details, hint })
+- createMockServer(...handlers: RequestHandler[]): SetupServer
+  - Pre-configured MSW server (listen in beforeAll, resetHandlers in afterEach, close in afterAll)
+- This approach means tests exercise the real error normalisation path in base_api
 
 MockCmsService:
-- createMockCmsService(content?: Record<string, string>): MockCmsService
-- content: map of key → string value
-- useCms mock: returns content[key] if present, null if not
-- All hooks return { content, loading: false, error: null } synchronously (no async in tests)
+- createMockCmsHandlers(appId: string, content: Record<string, string>): RequestHandler[]
+  - Intercepts Supabase CMS table queries, returns matching content rows
+- useCms mock for unit tests where MSW is overkill:
+  - createMockCmsHook(content: Record<string, string>): returns { content, loading: false, error: null }
 
 MockLogger:
 - createMockLogger(): captures all Logger calls
 - mockLogger.info, .warn, .error, .debug are all vi.fn()
-- mockLogger.getCallsFor(level): returns all calls for a log level
+- mockLogger.getCallsFor(level): returns all calls at that level
 
 MockAnalytics:
-- createMockAnalytics(): captures all Analytics calls
+- createMockAnalytics(): captures Analytics calls
 - mockAnalytics.events: recorded event list
 - mockAnalytics.wasEventFired(name): boolean
 
 TestData generators:
-- TestData.user(overrides?: Partial<User>): User — realistic User with unique uuid, sensible defaults
-- TestData.session(overrides?: Partial<Session>): Session — valid Session, expires 1 hour from now
-- TestData.cmsEntry(overrides?: Partial<CmsEntry>): CmsEntry — CMS content entry
-- All fields overridable, auto-generated unique IDs via crypto.randomUUID()
+- TestData.user(overrides?: Partial<User>): User — unique uuid, sensible defaults
+- TestData.session(overrides?: Partial<Session>): Session — expires 1 hour from now
+- TestData.cmsEntry(overrides?: Partial<CmsEntry>): CmsEntry
+- All fields overridable, auto-generated IDs via crypto.randomUUID()
 
 TestBrands:
-- TestBrands.plain: default brand with garish colours to prove theming works
-- TestBrands.dark: brand optimised for dark mode testing
-- TestBrands.compact: minimal spacing config
-
-MSW server setup helpers:
-- createMockServer(...handlers: RequestHandler[]): SetupServer — pre-configured MSW server
-- supabaseMockHandler(table: string, response: unknown): RequestHandler — intercepts Supabase REST calls for a table
+- TestBrands.plain — garish colours to prove theming works
+- TestBrands.dark — dark mode testing
+- TestBrands.compact — minimal spacing
 
 Self-tests:
-- renderWithBrand: verify BrandProvider + AuthProvider are in the tree
-- MockAuthService: signIn success path, signIn error path
-- MockApiClient: query returns configured response, error injection works
-- TestData: users have unique IDs, overrides applied correctly
+- renderWithBrand: BrandProvider and AuthProvider are in the tree
+- createSupabaseMockHandlers: GET returns configured rows, error shape returned on error config
+- TestData: users have unique IDs, overrides applied
+- MockLogger: captures calls at correct level
 
 Run `pnpm turbo test lint typecheck` — all must pass.
-Commit: "feat: base_test_utils with mocks, renderWithBrand, TestData generators"
+Commit: "feat: base_test_utils with MSW handlers, renderWithBrand, TestData"
 ```
 
 ---
@@ -485,76 +517,91 @@ Commit: "feat: base_test_utils with mocks, renderWithBrand, TestData generators"
 ## Prompt 7 — Example App
 
 ```
-Read CLAUDE.md. Phase 7: build example_app — a Next.js app demonstrating all packages working together.
+Read CLAUDE.md. Phase 7: build example_app — a Next.js app demonstrating all packages.
 
-Build example_app/ as a Next.js 14 App Router app that imports and uses all web-base packages.
+Build example_app/ as a Next.js 14 App Router app importing all web-base packages.
 
 ### Setup:
 - Import all packages from packages/*
-- Write a plain AppBrand config (deliberately garish colours — proves theming is from config)
-- Environment variables (use .env.local, never commit): NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SENTRY_DSN
-- Initialise monitoring in instrumentation.ts (Next.js convention)
-- AuthProvider + BrandProvider + ApiQueryProvider + CmsProvider wrapping the whole app in app/layout.tsx
+- Write a plain AppBrand config (garish colours — proves theming is from config, not hardcoded)
+- Environment variables in .env.local (never commit): NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SENTRY_DSN
+- Run `supabase gen types typescript` and save output to lib/database.types.ts — pass Database type to all client factories
+- Single client factory pattern: create one browser client and one server client factory, share them across the app. Do not instantiate Supabase clients anywhere except through base_api factory functions.
+- Initialise monitoring in instrumentation.ts
+- app/layout.tsx: BrandProvider + AuthProvider + ApiQueryProvider + CmsProvider wrapping the whole app
+
+### Data fetching patterns to demonstrate:
+
+Server Component (app/dashboard/page.tsx):
+  const cookieStore = cookies()
+  const client = createServerApiClient<Database>(cookieStore, apiConfig)
+  const { data: profile } = await client.from('profiles').select('*').eq('id', userId).single()
+
+Client Component (components/profile-card.tsx):
+  const client = useMemo(() => createBrowserApiClient<Database>(apiConfig), [])
+  const { data: profile } = useApiQuery(['profile', userId], () =>
+    client.from('profiles').select('*').eq('id', userId).single()
+  )
 
 ### Pages (App Router structure):
 
 app/page.tsx — Home (public):
-- CMS welcome headline via <CmsText cmsKey="home.headline" />
-- Sign in link → /auth/signin
-- Sign up link → /auth/signup
+- CmsText for welcome headline (demonstrates CMS)
+- Sign in / sign up links
+- BaseButton variant showcase (primary, secondary, tertiary, destructive)
 
 app/auth/signin/page.tsx:
 - BaseInput for email + password
-- BaseButton "Sign In" (loading state while signing in)
-- Link to /auth/signup
-- "Forgot password?" link
-- SSO buttons (Google, GitHub) — BaseButton variant secondary
-- Error message via BaseAlert on failure
+- BaseButton "Sign In" with loading state
+- SSO buttons (Google, GitHub) as BaseButton secondary
+- BaseAlert for errors
+- Link to sign up
 
 app/auth/signup/page.tsx:
 - BaseInput for email, password, display name
 - BaseButton "Create Account"
-- Link to /auth/signin
-- Error message via BaseAlert
+- BaseAlert for errors
 
-app/dashboard/page.tsx — protected:
-- Redirect to /auth/signin if not authenticated (middleware)
-- Welcome message: "Hello, {displayName}"
-- BaseCard with user details
-- Navigation to /dashboard/settings and /dashboard/chat
-- Sign out button
+app/dashboard/page.tsx — protected, Server Component:
+- Fetch profile server-side using createServerApiClient
+- Display welcome message and profile data
+- Pass data to client components as props (no double-fetch)
+- BaseSkeleton shown in client components before hydration
 
 app/dashboard/settings/page.tsx — protected:
 - Display current user info
-- Dark mode toggle (BaseToggle) — toggles data-theme attribute
+- Dark mode BaseToggle — toggles data-theme on <html>
 - Sign out button
 
 app/dashboard/chat/page.tsx — placeholder:
-- Simple textarea + BaseButton "Send" (hardcoded echo for now — no AI backend yet)
-- Demonstrates base_ui components
+- Simple textarea + BaseButton "Send" (echo for now)
+- Demonstrates base_ui layout components
 
 ### Middleware (middleware.ts):
-- Protect /dashboard/* routes — redirect to /auth/signin if no session
-- Use createMiddlewareClient from base_auth
+- Protect /dashboard/* — redirect to /auth/signin if no session
+- Use createMiddlewareClient from base_auth + createMiddlewareApiClient from base_api
 
 ### Must demonstrate:
-- BrandProvider applying CSS variables (check in browser devtools)
-- BaseButton all variants (show a demo section on home page)
-- BaseInput with validation error state
+- Server Component fetching with createServerApiClient (type-safe, cookie-aware)
+- Client Component fetching with useApiQuery + createBrowserApiClient
+- BrandProvider CSS variables (visible in browser devtools)
+- BaseButton all variants
+- BaseInput with validation error
 - BaseAlert for error messages
-- CmsText loading CMS content (or falling back gracefully if no Supabase connection)
-- Dark mode toggle working
-- Auth flow: sign up → dashboard → sign out → sign in
+- CmsText loading CMS content (graceful fallback if Supabase not connected)
+- Dark mode toggle
+- Full auth flow: sign up → dashboard → sign out → sign in
+- Error boundary (add a "Trigger Error" button in settings for demo purposes)
 
-### Tests (Vitest + React Testing Library):
+### Tests:
 - Home page: renders CmsText, shows sign in/up links
-- Sign in page: form renders, submit calls useAuth().signIn, error displays on failure (use MockAuthService)
-- Sign up page: form renders, submit calls useAuth().signUp
-- Dashboard: redirects when unauthenticated, shows content when authenticated (use MockAuthService pre-authenticated)
-- Middleware: protected routes redirect, unprotected routes pass through
+- Sign in: form submits, calls useAuth().signIn, error shown on failure (use MockAuthService + MSW handlers)
+- Sign up: form submits, calls useAuth().signUp
+- Dashboard: redirects when unauthenticated, shows profile data when authenticated (MSW returns mock profile row)
+- Middleware: protected routes redirect, unprotected pass through
 
 Run `pnpm turbo build test lint typecheck` — all must pass.
-Commit: "feat: example_app demonstrating all web-base packages"
+Commit: "feat: example_app with Server Components, client hooks, full auth flow"
 ```
 
 ---
@@ -579,7 +626,7 @@ ci.yml (trigger: push + PR to main):
     test:
       - pnpm install --frozen-lockfile
       - pnpm turbo test -- --coverage
-      - Upload coverage report as artifact
+      - Upload coverage as artifact
 
     build:
       - pnpm install --frozen-lockfile
@@ -587,55 +634,59 @@ ci.yml (trigger: push + PR to main):
       - needs: [typecheck, lint, test]
 
     compliance:
-      - Check for banned patterns in example_app/
-      - Banned: console.log, direct fetch(), hardcoded hex colours in JSX/TSX, <button (raw HTML), <input (raw HTML)
-      - Script: ci/check_compliance.sh example_app/
-      - continue-on-error: true (warn, don't block)
+      - Run ci/check_compliance.sh against example_app/
+      - continue-on-error: true
 
 ci/check_compliance.sh:
-  Write a bash script (same structure as app-base's check_base_compliance.sh) that scans .tsx/.ts files for:
-  ERRORS (exit 1 if found):
-    console\.log — use Logger
-    \bfetch\( — use base_api
+  Bash script scanning .tsx/.ts files for banned patterns.
+
+  ERRORS (exit 1 if any found):
+    console\.log — use Logger from base_monitoring
+    \bfetch\( — use base_api client
     <button[ >] — use BaseButton
     <input[ >] — use BaseInput
     <select[ >] — use BaseSelect
+    new SupabaseClient\( — use createBrowserApiClient / createServerApiClient from base_api
+    from '@supabase/supabase-js' — Supabase must only be imported inside base_api and base_auth packages
+
   WARNINGS (exit 0 with message):
     #[0-9a-fA-F]{6} in className — hardcoded hex colour, use CSS variable token
-    style={{ — inline styles, prefer Tailwind tokens
+    style={{ — inline style, prefer Tailwind tokens
+
+  Exclude from scanning: node_modules/, packages/base_api/, packages/base_auth/
+  (those packages legitimately use Supabase directly — the rule is for app code)
 
 ### Documentation:
 
 Root README.md:
 - What web-base is (2 sentences)
-- Relationship to app-base
+- Relationship to app-base (same Supabase backend, same naming conventions)
 - Package list with one-line descriptions
 - Prerequisites
-- Getting started: pnpm install, pnpm turbo dev (runs example_app)
-- How a new app consumes these packages (package.json dependency example)
+- Getting started: pnpm install, pnpm turbo dev
+- How a new app consumes packages (package.json example)
 - How to run tests: pnpm turbo test
-- How to add a package
+- Type generation: supabase gen types typescript --project-id <ref> > lib/database.types.ts
 
 Each package (packages/*/README.md):
 - Purpose (one paragraph)
 - Installation snippet
-- Quick start code example (10-15 lines)
+- Quick start code example
 - Key exports list
 
 CONTRIBUTING.md:
-- How to add a new package (step-by-step)
-- How to modify an existing package
-- Testing requirements: unit tests for all exports, renderWithBrand for components
+- How to add a new package
+- Testing requirements: unit tests for all exports, MSW for Supabase calls, renderWithBrand for components
 - Commit convention: feat:, fix:, refactor:, docs:, test:, chore:
 - PR process: CI must pass, one logical change per PR
 
 ### Final quality pass:
-- Run `pnpm turbo typecheck` — zero TypeScript errors
-- Run `pnpm turbo lint` — zero ESLint warnings
-- Run `pnpm turbo test` — all green
-- Run `pnpm turbo build` — builds successfully
-- Verify every package has: package.json, tsconfig.json, src/index.ts, README.md, at least one test file
-- Verify example_app builds: pnpm --filter example_app build
+- pnpm turbo typecheck — zero TypeScript errors
+- pnpm turbo lint — zero ESLint warnings
+- pnpm turbo test — all green
+- pnpm turbo build — builds successfully
+- Every package has: package.json, tsconfig.json, src/index.ts, README.md, at least one test file
+- example_app builds: pnpm --filter example_app build
 
 Commit: "docs: CI, compliance check, documentation, contributing guide"
 ```
@@ -648,10 +699,12 @@ You now have a working web platform scaffold. To build a new web app:
 
 1. Create a Next.js project: `npx create-next-app@latest my-app --typescript --tailwind --app`
 2. Add web-base dependencies to `package.json` (only the packages you need)
-3. Write a 20-line `AppBrand` config
-4. Wrap your app in `BrandProvider + AuthProvider + ApiQueryProvider`
-5. Build pages using `base_ui` components — never raw HTML elements
-6. Ship with auth, data fetching, error handling, monitoring — all handled
+3. Run `supabase gen types typescript` to get full type safety on all queries
+4. Write a 20-line `AppBrand` config
+5. Wrap your app in `BrandProvider + AuthProvider + ApiQueryProvider`
+6. Build pages using `base_ui` components — never raw HTML elements
+7. Fetch data in Server Components with `createServerApiClient`, in Client Components with `useApiQuery`
+8. Ship with auth, data fetching, error handling, monitoring — all handled
 
 For an app that also has a Flutter counterpart (using app-base), the Supabase backend is shared — same database, same Edge Functions, same auth. No backend changes needed.
 
@@ -659,17 +712,18 @@ For an app that also has a Flutter counterpart (using app-base), the Supabase ba
 
 ## Troubleshooting
 
-**"pnpm install fails"** → check Node.js version is 20+. Delete `node_modules` and `pnpm-lock.yaml`, then re-run `pnpm install`.
+**"pnpm install fails"** → check Node.js is 20+. Delete `node_modules` and `pnpm-lock.yaml`, re-run `pnpm install`.
 
 **"Turborepo can't find packages"** → check `pnpm-workspace.yaml` lists `packages/*` and `example_app`. Check each package `package.json` has the correct `name` field.
 
-**"TypeScript errors on import"** → check `tsconfig.json` in consuming package has `"references"` pointing to the dependency. Check the dependency's `package.json` has a `"main"` and `"types"` field pointing to its built output.
+**"TypeScript errors on import"** → check `tsconfig.json` in consuming package has `"references"` pointing to the dependency. Check the dependency's `package.json` has `"main"` and `"types"` fields.
 
-**"Supabase auth not working in App Router"** → must use `@supabase/ssr`, not `@supabase/supabase-js` directly. Cookies must be passed through server components. Check middleware calls `updateSession`.
+**"Supabase auth not working in App Router"** → must use `@supabase/ssr`, not `@supabase/supabase-js` directly. Cookies must pass through server components. Check middleware calls `updateSession`.
 
-**"CSS variables not applying"** → check `BrandProvider` is at the root of the tree above the component. Check `createTailwindConfig` is called in `tailwind.config.ts` and the output is spread into the config.
+**"CSS variables not applying"** → check `BrandProvider` is at the root above the component. Check `createTailwindConfig` is in `tailwind.config.ts`.
 
-**"Tests failing with 'window is not defined'"** → add `environment: 'jsdom'` to `vitest.config.ts`. Check `localStorage` access is wrapped in a `typeof window !== 'undefined'` guard in non-test code.
+**"Tests failing with 'window is not defined'"** → add `environment: 'jsdom'` to `vitest.config.ts`. Guard `localStorage` access with `typeof window !== 'undefined'`.
 
-**"MSW not intercepting Supabase calls"** → Supabase uses the fetch API. MSW must be set up before the test runs: `server.listen()` in beforeAll, `server.resetHandlers()` in afterEach, `server.close()` in afterAll.
-```
+**"MSW not intercepting Supabase calls"** → MSW must be set up before tests run: `server.listen()` in beforeAll, `server.resetHandlers()` in afterEach, `server.close()` in afterAll.
+
+**"supabase gen types gives 'project not found'"** → run `supabase login` first, then `supabase gen types typescript --project-id <your-ref>`. Find your ref in the Supabase dashboard URL.
