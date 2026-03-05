@@ -1,4 +1,4 @@
-import { requireAuthContext } from '../context/auth-context'
+import { useRequiredAuthContext } from '../context/auth-context'
 import type { User, SsoProvider } from '../types/auth'
 
 export interface UseAuthReturn {
@@ -17,7 +17,7 @@ export interface UseAuthReturn {
  * Must be used inside <AuthProvider>.
  */
 export function useAuth(): UseAuthReturn {
-  const ctx = requireAuthContext('useAuth')
+  const ctx = useRequiredAuthContext('useAuth')
   return {
     user: ctx.user,
     loading: ctx.loading,

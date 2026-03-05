@@ -1,4 +1,4 @@
-import { requireAuthContext } from '../context/auth-context'
+import { useRequiredAuthContext } from '../context/auth-context'
 
 export interface UseTwoFactorReturn {
   isEnrolled: boolean
@@ -12,7 +12,7 @@ export interface UseTwoFactorReturn {
  * Must be used inside <AuthProvider>.
  */
 export function useTwoFactor(): UseTwoFactorReturn {
-  const ctx = requireAuthContext('useTwoFactor')
+  const ctx = useRequiredAuthContext('useTwoFactor')
 
   return {
     isEnrolled: ctx.mfaIsEnrolled,

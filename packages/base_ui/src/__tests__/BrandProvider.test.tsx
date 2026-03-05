@@ -1,6 +1,6 @@
 import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { BrandProvider, useBrand } from '../theme/brand-provider'
 import type { AppBrand } from '../types/brand'
 
@@ -69,11 +69,10 @@ describe('BrandProvider', () => {
   })
 
   it('throws when useBrand is used outside BrandProvider', () => {
-    const OriginalConsole = console.error
-    console.error = () => {}
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => {
       render(<ConsumerComponent />)
     }).toThrow('useBrand must be used inside <BrandProvider>')
-    console.error = OriginalConsole
+    consoleSpy.mockRestore()
   })
 })

@@ -27,8 +27,8 @@ export interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
 
-/** @internal */
-export function requireAuthContext(hook: string): AuthContextValue {
+/** @internal — a custom hook so react-hooks/rules-of-hooks is satisfied */
+export function useRequiredAuthContext(hook: string): AuthContextValue {
   const ctx = useContext(AuthContext)
   if (!ctx) {
     throw new Error(`${hook} must be used inside <AuthProvider>`)

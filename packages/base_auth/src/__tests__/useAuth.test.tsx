@@ -1,13 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import {
-  mockAuthClient,
-  mockRawUser,
-  mockRawSession,
-  capturedAuthCallback,
-  resetMocks,
-} from './mock-supabase'
-import { renderAuthHook, testConfig } from './test-utils'
+import { mockAuthClient, mockRawSession, resetMocks } from './mock-supabase'
+import { renderAuthHook } from './test-utils'
 
 // ── Mock @supabase/ssr ──────────────────────────────────────────────────────
 

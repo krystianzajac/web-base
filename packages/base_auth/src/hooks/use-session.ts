@@ -1,4 +1,4 @@
-import { requireAuthContext } from '../context/auth-context'
+import { useRequiredAuthContext } from '../context/auth-context'
 import type { Session } from '../types/auth'
 
 export interface UseSessionReturn {
@@ -12,7 +12,7 @@ export interface UseSessionReturn {
  * Must be used inside <AuthProvider>.
  */
 export function useSession(): UseSessionReturn {
-  const ctx = requireAuthContext('useSession')
+  const ctx = useRequiredAuthContext('useSession')
 
   const isExpired =
     ctx.session !== null && ctx.session.expiresAt.getTime() < Date.now()

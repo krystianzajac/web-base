@@ -9,10 +9,13 @@
     "typecheck": "turbo typecheck"
   },
   "devDependencies": {
-    "turbo": "^2.3.0",
-    "typescript": "^5.7.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "prettier": "^3.4.0",
-    "eslint": "^8.57.0"
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
   },
   "workspaces": [
     "packages/*",
