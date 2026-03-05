@@ -9,7 +9,7 @@ import {
   RateLimitError,
   UnknownError,
 } from '../errors/api-error'
-import { classifyError, isRetryable } from '../errors/error-classifier'
+import { normaliseError, isRetryable } from '../errors/normalise-error'
 import { ErrorMessageMapper } from '../errors/error-message-mapper'
 
 describe('Error hierarchy', () => {
@@ -38,46 +38,67 @@ describe('Error hierarchy', () => {
   })
 })
 
-describe('classifyError', () => {
-  it('passes through existing ApiError instances', () => {
-    const err = new AuthError('already classified')
-    expect(classifyError(err)).toBe(err)
+describe('normaliseError', () => {
+  it('passes through existing ApiError instances unchanged', () => {
+    const err = new AuthError('already normalised')
+    expect(normaliseError(err)).toBe(err)
   })
 
-  it('classifies Supabase-like 401 error as AuthError', () => {
-    const result = classifyError({ code: 'not_authenticated', status: 401, message: 'JWT expired' })
+  it('maps Supabase 401 to AuthError', () => {
+    const result = normaliseError({ code: 'not_authenticated', status: 401, message: 'JWT expired' })
     expect(result).toBeInstanceOf(AuthError)
     expect(result.message).toBe('JWT expired')
   })
 
-  it('classifies Supabase-like 404 error as NotFoundError', () => {
-    const result = classifyError({ code: 'PGRST116', status: 404, message: 'Row not found' })
+  it('maps Supabase 404 to NotFoundError', () => {
+    const result = normaliseError({ code: 'PGRST116', status: 404, message: 'Row not found' })
     expect(result).toBeInstanceOf(NotFoundError)
   })
 
-  it('classifies 409 / unique violation as ConflictError', () => {
-    const result = classifyError({ code: '23505', message: 'duplicate key' })
+  it('maps Supabase PGRST116 (406 from .single()) to NotFoundError', () => {
+    // Supabase returns 406 Not Acceptable when .single() finds no row
+    const result = normaliseError({ code: 'PGRST116', status: 406, message: 'JSON object requested, multiple (or no) rows returned' })
+    expect(result).toBeInstanceOf(NotFoundError)
+  })
+
+  it('maps PGRST116 without status to NotFoundError', () => {
+    const result = normaliseError({ code: 'PGRST116', message: 'no rows' })
+    expect(result).toBeInstanceOf(NotFoundError)
+  })
+
+  it('maps unique constraint violation (23505) to ConflictError', () => {
+    const result = normaliseError({ code: '23505', message: 'duplicate key' })
     expect(result).toBeInstanceOf(ConflictError)
   })
 
-  it('classifies 429 as RateLimitError', () => {
-    const result = classifyError({ code: 'rate_limited', status: 429, message: 'slow down' })
+  it('maps 409 to ConflictError', () => {
+    const result = normaliseError({ code: '', status: 409, message: 'conflict' })
+    expect(result).toBeInstanceOf(ConflictError)
+  })
+
+  it('maps 429 to RateLimitError', () => {
+    const result = normaliseError({ code: 'rate_limited', status: 429, message: 'slow down' })
     expect(result).toBeInstanceOf(RateLimitError)
   })
 
-  it('classifies 500+ as ServerError', () => {
-    const result = classifyError({ code: 'internal', status: 503, message: 'service unavailable' })
+  it('maps 500+ to ServerError', () => {
+    const result = normaliseError({ code: 'internal', status: 503, message: 'service unavailable' })
     expect(result).toBeInstanceOf(ServerError)
     expect(result.statusCode).toBe(503)
   })
 
-  it('classifies plain Error with "network" keyword as NetworkError', () => {
-    const result = classifyError(new Error('network timeout'))
+  it('maps TypeError to NetworkError', () => {
+    const result = normaliseError(new TypeError('Failed to fetch'))
     expect(result).toBeInstanceOf(NetworkError)
   })
 
-  it('classifies unknown strings as UnknownError', () => {
-    const result = classifyError('something went wrong')
+  it('maps Error with "network" in message to NetworkError', () => {
+    const result = normaliseError(new Error('network unreachable'))
+    expect(result).toBeInstanceOf(NetworkError)
+  })
+
+  it('maps unknown strings to UnknownError', () => {
+    const result = normaliseError('something went wrong')
     expect(result).toBeInstanceOf(UnknownError)
   })
 })

@@ -1,7 +1,7 @@
 {
   "name": "@web-base/base-api",
   "version": "0.1.0",
-  "description": "Fetch wrapper, typed responses, error handling for web-base",
+  "description": "Typed Supabase client wrappers with error normalisation, retry, and TanStack Query hooks",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -27,7 +27,8 @@
     "@testing-library/react": "^14.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "jsdom": "^24.1.0"
+    "jsdom": "^24.1.0",
+    "msw": "^2.4.0"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.0",

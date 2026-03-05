@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
 import type { ApiError } from '../errors/api-error'
-import { classifyError } from '../errors/error-classifier'
+import { normaliseError } from '../errors/normalise-error'
 
 interface UseApiQueryResult<T> {
   data: T | undefined
@@ -32,7 +32,7 @@ export function useApiQuery<T>(
       try {
         return await fetcher()
       } catch (err) {
-        throw classifyError(err)
+        throw normaliseError(err)
       }
     },
     ...options,

@@ -1,5 +1,5 @@
 /**
- * Configuration for the ApiClient.
+ * Configuration for base_api client factories.
  */
 export interface ApiConfig {
   supabaseUrl: string
@@ -12,16 +12,33 @@ export interface ApiConfig {
   timeout?: number
 }
 
-/**
- * Filters for querying a Supabase table.
- */
-export interface QueryFilters {
-  eq?: Record<string, unknown>
-  neq?: Record<string, unknown>
-  gt?: Record<string, unknown>
-  lt?: Record<string, unknown>
-  in?: Record<string, unknown[]>
-  order?: { column: string; ascending?: boolean }
-  limit?: number
-  offset?: number
+/** A cookie item as returned by Next.js cookie store. */
+export interface CookieItem {
+  name: string
+  value: string
+}
+
+/** Options for setting a cookie. */
+export interface CookieSetOptions {
+  domain?: string
+  expires?: Date
+  httpOnly?: boolean
+  maxAge?: number
+  path?: string
+  sameSite?: 'strict' | 'lax' | 'none'
+  secure?: boolean
+}
+
+/** Framework-agnostic cookie store (structurally compatible with Next.js ReadonlyRequestCookies). */
+export interface ServerCookieStore {
+  getAll(): CookieItem[]
+  set?(name: string, value: string, options?: CookieSetOptions): void
+}
+
+/** Framework-agnostic middleware request (structurally compatible with NextRequest). */
+export interface MiddlewareRequest {
+  cookies: {
+    getAll(): CookieItem[]
+    set(name: string, value: string): void
+  }
 }

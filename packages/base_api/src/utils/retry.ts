@@ -1,4 +1,4 @@
-import { classifyError, isRetryable } from '../errors/error-classifier'
+import { normaliseError, isRetryable } from '../errors/normalise-error'
 import type { ApiError } from '../errors/api-error'
 
 interface RetryOptions {
@@ -7,7 +7,8 @@ interface RetryOptions {
 }
 
 /**
- * Runs `fn`, retrying on retryable errors with exponential backoff.
+ * Runs `fn` with exponential backoff, retrying only on NetworkError and ServerError.
+ * Useful for arbitrary async operations outside of Supabase query builders.
  */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
   const { attempts, delayMs } = options
@@ -17,7 +18,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions):
     try {
       return await fn()
     } catch (err) {
-      lastError = classifyError(err)
+      lastError = normaliseError(err)
       if (!isRetryable(lastError) || attempt === attempts - 1) {
         throw lastError
       }

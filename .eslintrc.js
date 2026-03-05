@@ -20,4 +20,12 @@ module.exports = {
     'react-hooks/purity': 'off',
   },
   ignorePatterns: ['dist/', 'node_modules/', '.turbo/'],
+  overrides: [
+    {
+      files: ['**/__tests__/**/*.{ts,tsx}', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+      rules: {
+        'no-console': 'off',
+      },
+    },
+  ],
 }

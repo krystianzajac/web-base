@@ -1,6 +1,6 @@
 import { useMutation, type UseMutationOptions } from '@tanstack/react-query'
 import type { ApiError } from '../errors/api-error'
-import { classifyError } from '../errors/error-classifier'
+import { normaliseError } from '../errors/normalise-error'
 
 interface UseApiMutationResult<T, V> {
   mutate: (variables: V) => void
@@ -19,7 +19,7 @@ interface UseApiMutationResult<T, V> {
  * @example
  * ```ts
  * const { mutate, loading, error } = useApiMutation((vars: { name: string }) =>
- *   api.insert('profiles', vars)
+ *   client.from('profiles').insert(vars).select().single()
  * )
  * ```
  */
@@ -32,7 +32,7 @@ export function useApiMutation<T, V = void>(
       try {
         return await mutator(variables)
       } catch (err) {
-        throw classifyError(err)
+        throw normaliseError(err)
       }
     },
     ...options,
