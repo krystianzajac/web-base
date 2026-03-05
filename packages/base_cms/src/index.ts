@@ -1,5 +1,5 @@
 // Types
-export type { CmsConfig, CmsEntry } from './types/cms-config'
+export type { CmsConfig, CmsEntry, CmsQueryClient } from './types/cms-config'
 
 // Client — Provider
 export { CmsProvider } from './client/cms-context'

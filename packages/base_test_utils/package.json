@@ -9,11 +9,15 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --reporter=verbose",
     "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@web-base/base-api": "workspace:*",
+    "@web-base/base-auth": "workspace:*",
+    "@web-base/base-cms": "workspace:*",
+    "@web-base/base-monitoring": "workspace:*",
     "@web-base/base-ui": "workspace:*"
   },
   "peerDependencies": {
@@ -21,9 +25,15 @@
     "react-dom": "^18.0.0"
   },
   "devDependencies": {
+    "@tanstack/react-query": "^5.56.0",
+    "@testing-library/jest-dom": "^6.4.0",
     "@testing-library/react": "^14.3.0",
+    "@testing-library/user-event": "^14.5.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "jsdom": "^25.0.0",
+    "msw": "^2.4.0",
     "typescript": "^5.7.0",
     "vitest": "^1.6.0"
   }

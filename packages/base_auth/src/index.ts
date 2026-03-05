@@ -1,6 +1,10 @@
 // Types
 export type { AuthConfig, User, Session, SsoProvider } from './types/auth'
 
+// Context — exported so test utilities can inject mock auth state directly
+export { AuthContext } from './context/auth-context'
+export type { AuthContextValue } from './context/auth-context'
+
 // Provider
 export { AuthProvider } from './components/auth-provider'
 export type { AuthProviderProps } from './components/auth-provider'
