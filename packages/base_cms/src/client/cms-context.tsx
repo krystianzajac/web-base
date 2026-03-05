@@ -1,3 +1,5 @@
+'use client'
+
 import React, { createContext, useContext, useMemo, type ReactNode } from 'react'
 import type { CmsConfig, CmsQueryClient } from '../types/cms-config'
 

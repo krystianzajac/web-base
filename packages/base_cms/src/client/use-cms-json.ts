@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useEffect } from 'react'
 import { useCmsContext } from './cms-context'
 import { getCacheKey, readCache, writeCache } from '../cache/local-storage-cache'

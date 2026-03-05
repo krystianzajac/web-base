@@ -1,3 +1,5 @@
+'use client'
+
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { AppBrand } from '../types/brand'
 import { darken, lighten } from './color-utils'

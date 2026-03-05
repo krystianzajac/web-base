@@ -1,3 +1,5 @@
+'use client'
+
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AuthContext } from '../context/auth-context'
 import { createBrowserAuthClient } from '../client/create-auth-client'

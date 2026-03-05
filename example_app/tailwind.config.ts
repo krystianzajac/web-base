@@ -1,5 +1,5 @@
 import type { Config } from 'tailwindcss'
-import { createTailwindConfig } from '@web-base/base-ui'
+import { createTailwindConfig } from '@web-base/base-ui/tailwind'
 import { exampleBrand } from './src/brand'
 
 const brandConfig = createTailwindConfig(exampleBrand)
