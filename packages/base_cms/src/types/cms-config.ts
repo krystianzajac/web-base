@@ -1,3 +1,17 @@
+/**
+ * Minimal duck-typed interface for the Supabase client used by CmsProvider.
+ * Avoids coupling base_cms to base_api while still providing compile-time
+ * assurance that the passed client has a `.from()` method.
+ *
+ * The chain after `.from()` is typed as `any` because fully duck-typing
+ * Supabase's recursive builder hierarchy is impractical. Use
+ * `createBrowserApiClient` from `@web-base/base-api` for the best experience.
+ */
+export interface CmsQueryClient {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  from(table: string): any
+}
+
 /** Row shape from the cms_content Supabase table. */
 export interface CmsEntry {
   id?: string

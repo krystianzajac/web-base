@@ -1,43 +1,54 @@
-import React, { useState } from 'react'
+import React from 'react'
+import Image from 'next/image'
 import { useCms } from '../client/use-cms'
 
 export interface CmsImageProps {
   cmsKey: string
   locale?: string
   alt: string
-  /** Rendered on load error or when content is unavailable. */
+  /** Rendered while loading or when content is unavailable. */
   fallback?: React.ReactNode
   className?: string
+  /**
+   * Provide both `width` and `height` for a fixed-size image.
+   * Omit both to use `fill` layout (parent must be `position: relative`).
+   */
   width?: number
   height?: number
 }
 
 /**
- * Renders an image whose URL comes from the CMS.
+ * Renders a Next.js `<Image>` whose URL comes from the CMS.
  *
- * Uses a standard `<img>` element. For Next.js image optimisation, wrap the
- * returned URL in `next/image` at the app level.
- *
+ * - If `width` and `height` are both provided, renders a fixed-size image.
+ * - If neither is provided, renders with `fill` (parent must be `position: relative`).
  * - **Loading / no URL**: renders `fallback` if provided, otherwise nothing.
- * - **Loaded**: renders `<img>` with the CMS URL.
- * - **Image load error**: falls back to `fallback`.
  */
 export function CmsImage({ cmsKey, locale, alt, fallback, className, width, height }: CmsImageProps) {
   const { content, loading } = useCms(cmsKey, locale)
-  const [imgError, setImgError] = useState(false)
 
-  if (loading || !content || imgError) {
+  if (loading || !content) {
     return fallback != null ? <>{fallback}</> : null
   }
 
+  if (width != null && height != null) {
+    return (
+      <Image
+        src={content}
+        alt={alt}
+        width={width}
+        height={height}
+        className={className}
+      />
+    )
+  }
+
   return (
-    <img
+    <Image
       src={content}
       alt={alt}
+      fill
       className={className}
-      width={width}
-      height={height}
-      onError={() => setImgError(true)}
     />
   )
 }

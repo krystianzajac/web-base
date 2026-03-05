@@ -1,12 +1,9 @@
-import React, { createContext, useContext, type ReactNode } from 'react'
-import type { CmsConfig } from '../types/cms-config'
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type CmsApiClient = any
+import React, { createContext, useContext, useMemo, type ReactNode } from 'react'
+import type { CmsConfig, CmsQueryClient } from '../types/cms-config'
 
 interface CmsContextValue {
   config: CmsConfig
-  apiClient: CmsApiClient
+  apiClient: CmsQueryClient
 }
 
 const CmsContext = createContext<CmsContextValue | null>(null)
@@ -16,9 +13,11 @@ export interface CmsProviderProps {
   /**
    * A browser API client created via `createBrowserApiClient` from `@web-base/base-api`.
    * The provider uses this client — it does NOT create its own Supabase connection.
+   *
+   * Memoize this at the call site (`useMemo` / module-level constant) to prevent
+   * unnecessary hook re-runs on parent re-renders.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  apiClient: any
+  apiClient: CmsQueryClient
   children: ReactNode
 }
 
@@ -34,8 +33,10 @@ export interface CmsProviderProps {
  * ```
  */
 export function CmsProvider({ config, apiClient, children }: CmsProviderProps) {
+  // Memoize context value so consumers only re-render when config or apiClient changes
+  const value = useMemo(() => ({ config, apiClient }), [config, apiClient])
   return (
-    <CmsContext.Provider value={{ config, apiClient }}>
+    <CmsContext.Provider value={value}>
       {children}
     </CmsContext.Provider>
   )

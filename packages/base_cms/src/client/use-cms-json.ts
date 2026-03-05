@@ -15,6 +15,9 @@ export interface UseCmsJsonResult<T> {
  * gracefully: if the value cannot be used as T, returns `data: null` instead of
  * throwing.
  *
+ * The `apiClient` from `CmsProvider` should be a stable reference (memoized at
+ * the call site) to prevent the effect from re-running on every parent render.
+ *
  * @example
  * ```tsx
  * const { data } = useCmsJson<{ headline: string; body: string }>('home_hero')
@@ -25,7 +28,13 @@ export function useCmsJson<T>(key: string, locale?: string): UseCmsJsonResult<T>
   const resolvedLocale = locale ?? config.defaultLocale
   const ttlMs = config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS
 
-  const [state, setState] = useState<UseCmsJsonResult<T>>({ data: null, loading: true, error: null })
+  // Synchronous cache check on mount — avoids loading flash when cache is warm.
+  const [state, setState] = useState<UseCmsJsonResult<T>>(() => {
+    const cacheKey = getCacheKey(config.appId, key, resolvedLocale)
+    const cached = readCache(cacheKey, ttlMs)
+    if (cached !== null) return { data: parseJson<T>(cached), loading: false, error: null }
+    return { data: null, loading: true, error: null }
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -35,11 +44,12 @@ export function useCmsJson<T>(key: string, locale?: string): UseCmsJsonResult<T>
       const cached = readCache(cacheKey, ttlMs)
 
       if (cached !== null) {
-        if (!cancelled) {
-          setState({ data: cached as T, loading: false, error: null })
-        }
+        if (!cancelled) setState({ data: parseJson<T>(cached), loading: false, error: null })
         return
       }
+
+      // Cache miss — show loading state before the network round-trip
+      if (!cancelled) setState({ data: null, loading: true, error: null })
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       const { data, error } = await apiClient
@@ -69,21 +79,17 @@ export function useCmsJson<T>(key: string, locale?: string): UseCmsJsonResult<T>
       const rawJson = (data as { content_json: unknown } | null)?.content_json ?? null
       const parsed = parseJson<T>(rawJson)
 
-      if (rawJson != null) {
-        writeCache(cacheKey, rawJson)
-      }
+      if (rawJson != null) writeCache(cacheKey, rawJson)
 
       setState({ data: parsed, loading: false, error: null })
     }
 
-    setState({ data: null, loading: true, error: null })
     load(resolvedLocale, false)
 
     return () => {
       cancelled = true
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, resolvedLocale, config.appId, ttlMs, config.defaultLocale, config.fallbackToDefaultLocale])
+  }, [key, resolvedLocale, config.appId, ttlMs, config.defaultLocale, config.fallbackToDefaultLocale, apiClient])
 
   return state
 }

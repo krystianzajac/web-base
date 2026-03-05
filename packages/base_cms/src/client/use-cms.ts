@@ -18,6 +18,9 @@ export interface UseCmsResult {
  * - Locale not found + fallbackToDefaultLocale=true: retries with defaultLocale.
  * - Not found at all: content is null.
  *
+ * The `apiClient` from `CmsProvider` should be a stable reference (memoized at
+ * the call site) to prevent the effect from re-running on every parent render.
+ *
  * @example
  * ```tsx
  * const { content, loading } = useCms('welcome_headline', 'en')
@@ -28,7 +31,14 @@ export function useCms(key: string, locale?: string): UseCmsResult {
   const resolvedLocale = locale ?? config.defaultLocale
   const ttlMs = config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS
 
-  const [state, setState] = useState<UseCmsResult>({ content: null, loading: true, error: null })
+  // Synchronous cache check on mount — avoids loading flash when cache is warm.
+  // On subsequent key/locale changes the effect handles state transitions.
+  const [state, setState] = useState<UseCmsResult>(() => {
+    const cacheKey = getCacheKey(config.appId, key, resolvedLocale)
+    const cached = readCache(cacheKey, ttlMs)
+    if (cached !== null) return { content: String(cached), loading: false, error: null }
+    return { content: null, loading: true, error: null }
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -38,11 +48,12 @@ export function useCms(key: string, locale?: string): UseCmsResult {
       const cached = readCache(cacheKey, ttlMs)
 
       if (cached !== null) {
-        if (!cancelled) {
-          setState({ content: String(cached), loading: false, error: null })
-        }
+        if (!cancelled) setState({ content: String(cached), loading: false, error: null })
         return
       }
+
+      // Cache miss — show loading state before the network round-trip
+      if (!cancelled) setState({ content: null, loading: true, error: null })
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       const { data, error } = await apiClient
@@ -75,21 +86,17 @@ export function useCms(key: string, locale?: string): UseCmsResult {
         ? (typeof rawJson === 'string' ? rawJson : JSON.stringify(rawJson))
         : null
 
-      if (rawJson != null) {
-        writeCache(cacheKey, rawJson)
-      }
+      if (rawJson != null) writeCache(cacheKey, rawJson)
 
       setState({ content, loading: false, error: null })
     }
 
-    setState({ content: null, loading: true, error: null })
     load(resolvedLocale, false)
 
     return () => {
       cancelled = true
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, resolvedLocale, config.appId, ttlMs, config.defaultLocale, config.fallbackToDefaultLocale])
+  }, [key, resolvedLocale, config.appId, ttlMs, config.defaultLocale, config.fallbackToDefaultLocale, apiClient])
 
   return state
 }
