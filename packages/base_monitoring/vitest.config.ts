@@ -6,5 +6,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      exclude: ['**/node_modules/**', '**/__tests__/**', '**/index.ts'],
+    },
   },
 })

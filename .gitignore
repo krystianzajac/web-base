@@ -5,3 +5,11 @@ dist
 .turbo
 coverage
 .DS_Store
+
+# Environment variables — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# Next.js auto-generated — changes on every build
+next-env.d.ts
