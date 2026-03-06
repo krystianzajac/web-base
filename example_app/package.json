@@ -16,6 +16,7 @@
     "@web-base/base-auth": "workspace:*",
     "@web-base/base-cms": "workspace:*",
     "@web-base/base-monitoring": "workspace:*",
+    "@web-base/base-i18n": "workspace:*",
     "@web-base/base-ui": "workspace:*",
     "next": "14.2.18",
     "react": "^18.3.0",

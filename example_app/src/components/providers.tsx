@@ -5,6 +5,7 @@ import { AuthProvider } from '@web-base/base-auth'
 import { ApiQueryProvider } from '@web-base/base-api'
 import { CmsProvider } from '@web-base/base-cms'
 import { createBrowserApiClient } from '@web-base/base-api'
+import { LocaleProvider, UnitsProvider } from '@web-base/base-i18n'
 import { authConfig, apiConfig, cmsConfig } from '@/lib/config'
 
 /**
@@ -16,12 +17,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const browserApiClient = useMemo(() => createBrowserApiClient(apiConfig), [])
 
   return (
-    <AuthProvider config={authConfig}>
-      <ApiQueryProvider>
-        <CmsProvider config={cmsConfig} apiClient={browserApiClient}>
-          {children}
-        </CmsProvider>
-      </ApiQueryProvider>
-    </AuthProvider>
+    <LocaleProvider>
+      <UnitsProvider>
+        <AuthProvider config={authConfig}>
+          <ApiQueryProvider>
+            <CmsProvider config={cmsConfig} apiClient={browserApiClient}>
+              {children}
+            </CmsProvider>
+          </ApiQueryProvider>
+        </AuthProvider>
+      </UnitsProvider>
+    </LocaleProvider>
   )
 }

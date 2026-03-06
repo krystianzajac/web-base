@@ -20,6 +20,7 @@ web-base/
 │   ├── base_api/         # Fetch wrapper, typed responses, error handling, retry
 │   ├── base_cms/         # CMS content service (same Supabase table as app-base)
 │   ├── base_monitoring/  # Sentry, analytics, structured logging
+│   ├── base_i18n/        # Localisation, translations, RTL, unit switching
 │   └── base_test_utils/  # Shared mocks, render helpers, test data generators
 ├── example_app/          # Next.js app demonstrating all packages
 ├── turbo.json
@@ -107,6 +108,17 @@ Use `@supabase/ssr` (not `@supabase/supabase-js`) for Next.js App Router compati
 - `Analytics` — privacy-respecting event tracking (consent-gated)
 - `<ErrorBoundary fallback={...}>` component
 
+### base_i18n
+- `LocaleProvider` — context provider; persists locale to localStorage, sets `lang`/`dir` on `<html>`
+- `useLocale()` hook — `{ locale, setLocale, dir, isRTL }`
+- Supported locales: `en`, `pl`, `ja`, `zh`, `ar` — Arabic auto-enables RTL
+- `useTranslations(map)` hook — type-safe `t(key)` with automatic English fallback
+- `LocaleSwitcher` component — `<select>` showing each language in its own script
+- `UnitsProvider` — context provider; persists unit system to localStorage
+- `useUnits()` hook — `{ unitSystem, setUnitSystem, convert, toMetric, format, label }`
+- Unit systems: `metric` (bar, L/min, L, °C) / `imperial` (PSI, GPM, gal, °F)
+- `formatUnit(value, quantity, system)` — pure conversion + label (no React required)
+
 ### base_test_utils
 - `renderWithBrand(component, brand)` — wraps in providers (theme, query client, router)
 - Mock factories: `MockAuthService`, `MockApiClient`, `MockCmsService`
@@ -186,6 +198,8 @@ const brand: AppBrand = {
 - Data fetching via `base_api`
 - CMS content via `base_cms`
 - Dark mode toggle
+- Language switcher (EN, PL, JA, ZH, AR — Arabic triggers RTL)
+- Unit system switcher (metric / imperial)
 - RTL preview
 - Error boundaries
 - Monitoring + analytics
@@ -231,7 +245,8 @@ Build packages in this order — each one unblocks the next:
 3. `base_api` — data layer needed for real content
 4. `base_monitoring` — should be in from the start
 5. `base_cms` — content service
-6. `base_test_utils` — add alongside each package, not at the end
+6. `base_i18n` — localisation, RTL, unit switching
+7. `base_test_utils` — add alongside each package, not at the end
 
 Build `example_app` incrementally as each package is completed.
 

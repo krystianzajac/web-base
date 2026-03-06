@@ -2,8 +2,9 @@
 
 import { useAuth } from '@web-base/base-auth'
 import { useBrand } from '@web-base/base-ui'
-import { BaseButton, BaseCard, BaseToggle, BaseAvatar, BaseAlert } from '@web-base/base-ui'
+import { BaseButton, BaseCard, BaseToggle, BaseAvatar, BaseAlert, BaseSelect } from '@web-base/base-ui'
 import { ErrorBoundaryWithMonitoring } from '@web-base/base-monitoring'
+import { useLocale, useUnits } from '@web-base/base-i18n'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -14,6 +15,8 @@ import { useRouter } from 'next/navigation'
 export default function SettingsPage() {
   const { user, signOut, error } = useAuth()
   const { isDark, toggleDark } = useBrand()
+  const { locale, setLocale } = useLocale()
+  const { unitSystem, setUnitSystem } = useUnits()
   const router = useRouter()
   const [signingOut, setSigningOut] = useState(false)
 
@@ -51,6 +54,36 @@ export default function SettingsPage() {
             </p>
             <p className="text-sm text-[var(--color-text-secondary)]">{user?.email}</p>
           </div>
+        </div>
+      </BaseCard>
+
+      {/* Language + units */}
+      <BaseCard padding="md" className="mb-4">
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3">
+          Language &amp; Units
+        </h2>
+        <div className="flex flex-col gap-3">
+          <BaseSelect
+            label="Language"
+            value={locale}
+            onChange={(v) => setLocale(v as typeof locale)}
+            options={[
+              { value: 'en', label: 'English' },
+              { value: 'pl', label: 'Polski' },
+              { value: 'ja', label: '日本語' },
+              { value: 'zh', label: '中文' },
+              { value: 'ar', label: 'العربية' },
+            ]}
+          />
+          <BaseSelect
+            label="Unit system"
+            value={unitSystem}
+            onChange={(v) => setUnitSystem(v as typeof unitSystem)}
+            options={[
+              { value: 'metric', label: 'Metric (bar, L/min, °C)' },
+              { value: 'imperial', label: 'Imperial (PSI, GPM, °F)' },
+            ]}
+          />
         </div>
       </BaseCard>
 
