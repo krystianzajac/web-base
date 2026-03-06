@@ -16,10 +16,11 @@ Read this top to bottom the first time. Use it as a reference after that.
 6. [Protect routes with middleware](#6-protect-routes-with-middleware)
 7. [Fetch data](#7-fetch-data)
 8. [Add CMS content](#8-add-cms-content)
-9. [Add monitoring](#9-add-monitoring)
-10. [Write tests](#10-write-tests)
-11. [Generate Supabase types](#11-generate-supabase-types)
-12. [Checklist before shipping](#12-checklist-before-shipping)
+9. [Add localisation and unit switching](#9-add-localisation-and-unit-switching)
+10. [Add monitoring](#10-add-monitoring)
+11. [Write tests](#11-write-tests)
+12. [Generate Supabase types](#12-generate-supabase-types)
+13. [Checklist before shipping](#13-checklist-before-shipping)
 
 ---
 
@@ -52,7 +53,8 @@ Add only the packages your app needs. A read-only marketing site only needs `bas
     "@web-base/base-auth":       "github:krystianzajac/web-base#main&path=packages/base_auth",
     "@web-base/base-api":        "github:krystianzajac/web-base#main&path=packages/base_api",
     "@web-base/base-cms":        "github:krystianzajac/web-base#main&path=packages/base_cms",
-    "@web-base/base-monitoring": "github:krystianzajac/web-base#main&path=packages/base_monitoring"
+    "@web-base/base-monitoring": "github:krystianzajac/web-base#main&path=packages/base_monitoring",
+    "@web-base/base-i18n":       "github:krystianzajac/web-base#main&path=packages/base_i18n"
   },
   "devDependencies": {
     "@web-base/base-test-utils": "github:krystianzajac/web-base#main&path=packages/base_test_utils"
@@ -77,6 +79,7 @@ const nextConfig = {
     '@web-base/base-api',
     '@web-base/base-cms',
     '@web-base/base-monitoring',
+    '@web-base/base-i18n',
   ],
 }
 
@@ -155,18 +158,23 @@ import { useMemo } from 'react'
 import { AuthProvider } from '@web-base/base-auth'
 import { ApiQueryProvider, createBrowserApiClient } from '@web-base/base-api'
 import { CmsProvider } from '@web-base/base-cms'
+import { LocaleProvider, UnitsProvider } from '@web-base/base-i18n'
 import { apiConfig, authConfig, cmsConfig } from '@/lib/config'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const browserApiClient = useMemo(() => createBrowserApiClient(apiConfig), [])
   return (
-    <AuthProvider config={authConfig}>
-      <ApiQueryProvider>
-        <CmsProvider config={cmsConfig} apiClient={browserApiClient}>
-          {children}
-        </CmsProvider>
-      </ApiQueryProvider>
-    </AuthProvider>
+    <LocaleProvider>
+      <UnitsProvider>
+        <AuthProvider config={authConfig}>
+          <ApiQueryProvider>
+            <CmsProvider config={cmsConfig} apiClient={browserApiClient}>
+              {children}
+            </CmsProvider>
+          </ApiQueryProvider>
+        </AuthProvider>
+      </UnitsProvider>
+    </LocaleProvider>
   )
 }
 ```
@@ -489,7 +497,97 @@ insert into cms_content (app_id, key, locale, content_json) values
 
 ---
 
-## 9. Add monitoring
+## 9. Add localisation and unit switching
+
+### Provider setup
+
+`LocaleProvider` and `UnitsProvider` are already in the providers stack from Section 4. No extra config needed.
+
+### Translations
+
+Define your translation map outside the component. English (`en`) is required; other locales are optional. Missing keys fall back to English automatically.
+
+```tsx
+'use client'
+import { useTranslations } from '@web-base/base-i18n'
+
+const translations = {
+  en: { save: 'Save', cancel: 'Cancel', loading: 'Loading...' },
+  pl: { save: 'Zapisz', cancel: 'Anuluj', loading: 'Ładowanie...' },
+  ja: { save: '保存', cancel: 'キャンセル', loading: '読み込み中...' },
+  zh: { save: '保存', cancel: '取消', loading: '加载中...' },
+  ar: { save: 'حفظ', cancel: 'إلغاء', loading: 'جار التحميل...' },
+} as const satisfies Parameters<typeof useTranslations>[0]
+
+export function SaveButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslations(translations)
+  return <BaseButton onClick={onClick}>{t('save')}</BaseButton>
+}
+```
+
+### Language switcher
+
+Use the built-in `LocaleSwitcher` (renders a `<select>` with each language in its own script), or build your own UI with `useLocale`:
+
+```tsx
+import { LocaleSwitcher } from '@web-base/base-i18n'
+
+// Drop-in switcher — shows English, Polski, 日本語, 中文, العربية
+<LocaleSwitcher className="rounded border p-1" />
+```
+
+```tsx
+'use client'
+import { useLocale, LOCALE_LABELS } from '@web-base/base-i18n'
+
+// Custom switcher
+export function MyLocaleSwitcher() {
+  const { locale, setLocale } = useLocale()
+  // locale: 'en' | 'pl' | 'ja' | 'zh' | 'ar'
+  // isRTL: true when locale === 'ar'
+  ...
+}
+```
+
+Switching to Arabic **automatically** sets `dir="rtl"` and `lang="ar"` on `<html>`. Tailwind's `rtl:` variant is available for layout mirroring.
+
+### Unit conversion
+
+All data should be stored and transmitted in **metric units**. Convert at the display layer only.
+
+```tsx
+'use client'
+import { useUnits } from '@web-base/base-i18n'
+
+export function PressureDisplay({ barValue }: { barValue: number }) {
+  const { format, label } = useUnits()
+  // metric: "2.50 bar"   imperial: "36.26 PSI"
+  return <span>{format(barValue, 'pressure')}</span>
+}
+```
+
+```tsx
+// Unit system toggle in settings
+const { unitSystem, setUnitSystem } = useUnits()
+
+<BaseSelect
+  label="Units"
+  value={unitSystem}
+  onChange={v => setUnitSystem(v as 'metric' | 'imperial')}
+  options={[
+    { value: 'metric',   label: 'Metric (bar, L/min, °C)' },
+    { value: 'imperial', label: 'Imperial (PSI, GPM, °F)' },
+  ]}
+/>
+```
+
+Supported quantities: `flowRate` (L/min ↔ GPM), `pressure` (bar ↔ PSI), `volume` (L ↔ gal), `temperature` (°C ↔ °F).
+
+Both locale and unit system are persisted to `localStorage` automatically.
+
+---
+
+## 10. Add monitoring
 
 ### Sentry init
 
@@ -557,7 +655,7 @@ export default function DashboardLayout({ children }) {
 
 ---
 
-## 10. Write tests
+## 11. Write tests
 
 ### Setup
 
@@ -683,7 +781,7 @@ it('redirects unauthenticated user from /dashboard', async () => {
 
 ---
 
-## 11. Generate Supabase types
+## 12. Generate Supabase types
 
 Run this whenever the database schema changes and commit the result alongside your code:
 
@@ -704,7 +802,7 @@ supabase login
 
 ---
 
-## 12. Checklist before shipping
+## 13. Checklist before shipping
 
 ### Code quality
 - [ ] `npx tsc --noEmit` — zero TypeScript errors
@@ -719,6 +817,12 @@ supabase login
 - [ ] No `<button>`, `<input>`, `<select>` — using `BaseButton`, `BaseInput`, `BaseSelect`
 - [ ] No hardcoded colours — using `var(--color-*)` tokens or Tailwind generated classes
 - [ ] No direct Supabase imports outside `base_api` / `base_auth`
+
+### Localisation
+- [ ] `LocaleProvider` and `UnitsProvider` are in the provider stack
+- [ ] All user-facing strings use `useTranslations` — no hardcoded English text in components
+- [ ] All numeric values displayed via `useUnits().format()` — not raw metric numbers
+- [ ] Switching to Arabic renders the interface correctly in RTL
 
 ### Auth and security
 - [ ] All protected routes covered by middleware

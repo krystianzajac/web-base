@@ -15,6 +15,7 @@ Both repos point at the **same Supabase project**: same database tables, same Ed
 | [`base_api`](packages/base_api/) | Typed Supabase client, TanStack Query wrappers, error hierarchy, retry |
 | [`base_cms`](packages/base_cms/) | CMS content from the shared `cms_content` table, with localStorage cache |
 | [`base_monitoring`](packages/base_monitoring/) | Sentry init, structured Logger, consent-gated Analytics, ErrorBoundary |
+| [`base_i18n`](packages/base_i18n/) | Localisation (EN/PL/JA/ZH/AR), RTL, `useTranslations`, metric/imperial unit switching |
 | [`base_test_utils`](packages/base_test_utils/) | `renderWithBrand`, MSW handlers, mock services, TestData generators |
 
 ## Prerequisites
@@ -53,7 +54,8 @@ Add only what you need to your app's `package.json`:
     "@web-base/base-auth":         "github:krystianzajac/web-base#main&path=packages/base_auth",
     "@web-base/base-api":          "github:krystianzajac/web-base#main&path=packages/base_api",
     "@web-base/base-cms":          "github:krystianzajac/web-base#main&path=packages/base_cms",
-    "@web-base/base-monitoring":   "github:krystianzajac/web-base#main&path=packages/base_monitoring"
+    "@web-base/base-monitoring":   "github:krystianzajac/web-base#main&path=packages/base_monitoring",
+    "@web-base/base-i18n":         "github:krystianzajac/web-base#main&path=packages/base_i18n"
   },
   "devDependencies": {
     "@web-base/base-test-utils":   "github:krystianzajac/web-base#main&path=packages/base_test_utils"
@@ -71,6 +73,7 @@ const nextConfig = {
     '@web-base/base-api',
     '@web-base/base-cms',
     '@web-base/base-monitoring',
+    '@web-base/base-i18n',
   ],
 }
 ```
