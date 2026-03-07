@@ -35,6 +35,9 @@ importers:
       '@web-base/base-api':
         specifier: workspace:*
         version: link:../web-base/packages/base_api
+      '@web-base/base-i18n':
+        specifier: workspace:*
+        version: link:../web-base/packages/base_i18n
       '@web-base/base-monitoring':
         specifier: workspace:*
         version: link:../web-base/packages/base_monitoring
@@ -148,6 +151,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.0.0
         version: 4.7.0(vite@5.4.21(@types/node@22.19.13)(terser@5.46.0))
+      '@vitest/coverage-v8':
+        specifier: ^1.6.0
+        version: 1.6.1(vitest@1.6.1(@types/node@22.19.13)(jsdom@25.0.1)(terser@5.46.0))
       '@web-base/base-test-utils':
         specifier: workspace:*
         version: link:../packages/base_test_utils
