@@ -47,3 +47,12 @@ export type { BaseAlertProps } from './components/BaseAlert'
 
 export { ErrorBoundary } from './components/ErrorBoundary'
 export type { ErrorBoundaryProps } from './components/ErrorBoundary'
+
+export { BaseTabs, BaseTabPanel } from './components/BaseTabs'
+export type { BaseTabsProps, BaseTabPanelProps, BaseTabItem } from './components/BaseTabs'
+
+export { BaseTable } from './components/BaseTable'
+export type { BaseTableProps, BaseTableColumn } from './components/BaseTable'
+
+export { BaseTimeline } from './components/BaseTimeline'
+export type { BaseTimelineProps, BaseTimelineItem } from './components/BaseTimeline'
