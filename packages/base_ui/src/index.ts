@@ -3,6 +3,7 @@ export type { AppBrand } from './types/brand'
 
 // Theme
 export { createTailwindConfig } from './theme/tailwind-config'
+export { generateBrandCSS, generateTailwindV4Theme } from './theme/brand-css'
 export { BrandProvider, useBrand } from './theme/brand-provider'
 
 // Utilities
