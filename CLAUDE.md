@@ -3,11 +3,13 @@
 ## Repo Boundaries — HARD RULE
 
 This repo is self-contained. NEVER read, modify, or reference files outside
-this repository. Do NOT modify any Watergate repos (`watergate-web-base`,
-`watergate-app-base`, `watergate-web-dashboard`, or any other `watergate-*` repo).
-Do NOT add external paths (e.g. `../some-other-project`) to `pnpm-workspace.yaml`
-or any workspace/build config. If an app agent needs base package changes, they
-must document the request — not modify this repo directly.
+this repository. Specifically:
+- Do NOT access anything under `~/CODING/watergate/` (company repos)
+- Do NOT modify any `watergate-*` repos anywhere on disk
+- Do NOT add external paths (e.g. `../some-project`) to `pnpm-workspace.yaml` or any workspace config
+- Your scope is `~/CODING/personal/` only
+If an app agent needs base package changes, they must document the request —
+not modify this repo directly.
 
 ---
 
