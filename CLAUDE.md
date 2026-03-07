@@ -1,5 +1,16 @@
 # Web Base — Shared Web Scaffold
 
+## Repo Boundaries — HARD RULE
+
+This repo is self-contained. NEVER read, modify, or reference files outside
+this repository. Do NOT modify any Watergate repos (`watergate-web-base`,
+`watergate-app-base`, `watergate-web-dashboard`, or any other `watergate-*` repo).
+Do NOT add external paths (e.g. `../some-other-project`) to `pnpm-workspace.yaml`
+or any workspace/build config. If an app agent needs base package changes, they
+must document the request — not modify this repo directly.
+
+---
+
 ## What This Is
 
 A TypeScript monorepo containing **shared packages** that any web application can import. This is NOT an app — it's the foundation layer. Individual web apps live in their own separate repos and pull in these packages as npm dependencies.
